@@ -171,6 +171,7 @@ struct Data {
   std::vector<LineTable> DebugLines;
 
   bool isEmpty() const;
+  std::vector<StringRef> getELFSectionNames() const;
 };
 
 } // end namespace DWARFYAML

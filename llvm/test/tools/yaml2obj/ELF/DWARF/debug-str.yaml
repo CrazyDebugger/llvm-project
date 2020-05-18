@@ -1,0 +1,72 @@
+## Test that yaml2obj emits .debug_str section.
+
+## a) Generate the .debug_str section from the "DWARF" entry.
+
+# RUN: yaml2obj --docnum=1 %s -o %t1.o
+# RUN: llvm-dwarfdump --debug-str %t1.o | FileCheck %s
+
+#      CHECK: .debug_str contents:
+# CHECK-NEXT: 0x00000000: "a"
+# CHECK-NEXT: 0x00000002: "b"
+# CHECK-NEXT: 0x00000004: "c"
+
+## Check the sh_entsize, sh_flags and sh_addralign of the .debug_str section header.
+
+# RUN: llvm-readelf --section-headers %t1.o | FileCheck %s --check-prefix="READELF"
+
+#          Name       Type     Address          Offset Size   ES Flg Lk Inf Al
+# READELF: .debug_str PROGBITS 0000000000000000 000040 000006 01 MS  0  0   1
+
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+DWARF:
+  debug_str:
+    - a
+    - b
+    - c
+...
+
+## b) Generate the .debug_str section from the raw section content.
+
+# RUN: yaml2obj --docnum=2 %s -o %t2.o
+# RUN: llvm-dwarfdump --debug-str %t2.o | FileCheck %s
+
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+Sections:
+  - Name:    .debug_str
+    Type:    SHT_PROGBITS
+    Flags:   [SHF_MERGE, SHF_STRINGS]
+    Content: "610062006300"
+...
+
+## c) If the debug section is declared in "Sections:" entry, then the contents
+## in "DWARF" entry will not be emitted.
+
+# RUN: yaml2obj --docnum=3 %s -o %t3.o
+# RUN: llvm-dwarfdump --debug-str %t3.o | FileCheck %s --check-prefix="EMPTY"
+
+#       EMPTY: .debug_str contents:
+# EMPTY-EMPTY:
+
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+Sections:
+  - Name:  .debug_str
+    Type:  SHT_PROGBITS
+DWARF:
+  debug_str:
+    - a
+...

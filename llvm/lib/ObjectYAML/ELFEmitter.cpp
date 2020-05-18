@@ -17,6 +17,7 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/StringTableBuilder.h"
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/ObjectYAML/DWARFEmitter.h"
 #include "llvm/ObjectYAML/ELFYAML.h"
 #include "llvm/ObjectYAML/yaml2obj.h"
 #include "llvm/Support/EndianStream.h"
@@ -149,6 +150,9 @@ template <class ELFT> class ELFState {
                                StringTableBuilder &STB,
                                ContiguousBlobAccumulator &CBA,
                                ELFYAML::Section *YAMLSec);
+  void initDWARFSectionHeader(Elf_Shdr &SHeader, StringRef Name,
+                              ContiguousBlobAccumulator &CBA,
+                              ELFYAML::Section *YAMLSec);
   void setProgramHeaderLayout(std::vector<Elf_Phdr> &PHeaders,
                               std::vector<Elf_Shdr> &SHeaders);
 
@@ -258,6 +262,9 @@ ELFState<ELFT>::ELFState(ELFYAML::Object &D, yaml::ErrorHandler EH)
     ImplicitSections.insert(ImplicitSections.end(), {".dynsym", ".dynstr"});
   if (Doc.Symbols)
     ImplicitSections.push_back(".symtab");
+  if (Doc.DWARF)
+    for (StringRef DebugSecName : Doc.DWARF->getELFSectionNames())
+      ImplicitSections.push_back(DebugSecName);
   ImplicitSections.insert(ImplicitSections.end(), {".strtab", ".shstrtab"});
 
   // Insert placeholders for implicit sections that are not
@@ -391,6 +398,8 @@ bool ELFState<ELFT>::initImplicitHeader(ContiguousBlobAccumulator &CBA,
     initSymtabSectionHeader(Header, SymtabType::Dynamic, CBA, YAMLSec);
   else if (SecName == ".dynstr")
     initStrtabSectionHeader(Header, SecName, DotDynstr, CBA, YAMLSec);
+  else if (SecName.startswith(".debug_"))
+    initDWARFSectionHeader(Header, SecName, CBA, YAMLSec);
   else
     return false;
 
@@ -727,6 +736,53 @@ void ELFState<ELFT>::initStrtabSectionHeader(Elf_Shdr &SHeader, StringRef Name,
     SHeader.sh_flags = *YAMLSec->Flags;
   else if (Name == ".dynstr")
     SHeader.sh_flags = ELF::SHF_ALLOC;
+
+  assignSectionAddress(SHeader, YAMLSec);
+}
+
+template <class ELFT>
+void ELFState<ELFT>::initDWARFSectionHeader(Elf_Shdr &SHeader, StringRef Name,
+                                            ContiguousBlobAccumulator &CBA,
+                                            ELFYAML::Section *YAMLSec) {
+  zero(SHeader);
+  SHeader.sh_name = DotShStrtab.getOffset(ELFYAML::dropUniqueSuffix(Name));
+  SHeader.sh_type = YAMLSec ? YAMLSec->Type : ELF::SHT_PROGBITS;
+  SHeader.sh_addralign = YAMLSec ? (uint64_t)YAMLSec->AddressAlign : 1;
+
+  ELFYAML::RawContentSection *RawSec =
+      dyn_cast_or_null<ELFYAML::RawContentSection>(YAMLSec);
+
+  SHeader.sh_offset = alignToOffset(CBA, SHeader.sh_addralign, /*Offset=*/None);
+  raw_ostream &OS = CBA.getOS();
+
+  if (RawSec)
+    // If the implicit debug section is declared in "Sections:" entry, then the
+    // contents in "DWARF:" entry will not be emitted.
+    SHeader.sh_size = writeContent(OS, RawSec->Content, RawSec->Size);
+  else if (Doc.DWARF) {
+    uint64_t BeginOffset = OS.tell();
+    if (Name == ".debug_str")
+      DWARFYAML::EmitDebugStr(OS, *Doc.DWARF);
+    else
+      // TODO: Support more debug sections.
+      reportError(Name + " section is not implemented");
+    uint64_t EndOffset = OS.tell();
+    SHeader.sh_size = EndOffset - BeginOffset;
+  } else
+    llvm_unreachable("initDWARFSectionHeader() failed");
+
+  if (YAMLSec && YAMLSec->EntSize)
+    SHeader.sh_entsize = *YAMLSec->EntSize;
+  else if (Name == ".debug_str")
+    SHeader.sh_entsize = 1;
+
+  if (RawSec && RawSec->Info)
+    SHeader.sh_info = *RawSec->Info;
+
+  if (YAMLSec && YAMLSec->Flags)
+    SHeader.sh_flags = *YAMLSec->Flags;
+  else if (Name == ".debug_str")
+    SHeader.sh_flags = ELF::SHF_MERGE | ELF::SHF_STRINGS;
 
   assignSectionAddress(SHeader, YAMLSec);
 }

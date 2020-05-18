@@ -23,6 +23,32 @@ bool DWARFYAML::Data::isEmpty() const {
                   DebugLines.size();
 }
 
+std::vector<StringRef> DWARFYAML::Data::getELFSectionNames() const {
+  std::vector<StringRef> SecNames;
+  if (!DebugStrings.empty())
+    SecNames.push_back(".debug_str");
+  if (!AbbrevDecls.empty())
+    SecNames.push_back(".debug_abbrev");
+  if (!ARanges.empty())
+    SecNames.push_back(".debug_aranges");
+  if (!DebugRanges.empty())
+    SecNames.push_back(".debug_ranges");
+  if (!PubNames.Entries.empty())
+    SecNames.push_back(".debug_pubnames");
+  if (!PubTypes.Entries.empty())
+    SecNames.push_back(".debug_pubtypes");
+  if (!GNUPubNames.Entries.empty())
+    SecNames.push_back(".debug_gnu_pubnames");
+  if (!GNUPubTypes.Entries.empty())
+    SecNames.push_back(".debug_gnu_pubtypes");
+  if (!CompileUnits.empty())
+    SecNames.push_back(".debug_info");
+  if (!DebugLines.empty())
+    SecNames.push_back(".debug_line");
+
+  return SecNames;
+}
+
 namespace yaml {
 
 void MappingTraits<DWARFYAML::Data>::mapping(IO &IO, DWARFYAML::Data &DWARF) {
