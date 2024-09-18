@@ -970,7 +970,7 @@ Session::Session(std::unique_ptr<ExecutorProcessControl> EPC, Error &Err)
     JITLinkSessionPlugin(Session &S) : S(S) {}
     void modifyPassConfig(MaterializationResponsibility &MR, LinkGraph &G,
                           PassConfiguration &PassConfig) override {
-      S.modifyPassConfig(G.getTargetTriple(), PassConfig);
+      S.modifyPassConfig(PassConfig);
     }
 
     Error notifyFailed(MaterializationResponsibility &MR) override {
@@ -1145,8 +1145,7 @@ void Session::dumpSessionInfo(raw_ostream &OS) {
   OS << "Registered addresses:\n" << SymbolInfos << FileInfos;
 }
 
-void Session::modifyPassConfig(const Triple &TT,
-                               PassConfiguration &PassConfig) {
+void Session::modifyPassConfig(PassConfiguration &PassConfig) {
   if (!CheckFiles.empty())
     PassConfig.PostFixupPasses.push_back([this](LinkGraph &G) {
       if (ES.getTargetTriple().getObjectFormat() == Triple::ELF)

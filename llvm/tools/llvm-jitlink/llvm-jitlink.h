@@ -42,8 +42,7 @@ struct Session {
   static Expected<std::unique_ptr<Session>> Create(Triple TT,
                                                    SubtargetFeatures Features);
   void dumpSessionInfo(raw_ostream &OS);
-  void modifyPassConfig(const Triple &FTT,
-                        jitlink::PassConfiguration &PassConfig);
+  void modifyPassConfig(jitlink::PassConfiguration &PassConfig);
 
   using MemoryRegionInfo = RuntimeDyldChecker::MemoryRegionInfo;
 
